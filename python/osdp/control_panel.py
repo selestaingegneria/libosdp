@@ -1,22 +1,24 @@
 #
-#  Copyright (c) 2021-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+#  Copyright (c) 2021-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
 #
 #  SPDX-License-Identifier: Apache-2.0
 #
-import sys
-import os
-import tempfile
 import osdp_sys
 import time
 import queue
 import threading
+from typing import Callable, Tuple
 
-from .helpers import PDInfo
-from .constants import LibFlag, LogLevel
+from .helpers import PDInfo, PdId
+from .constants import Capability, LibFlag, LogLevel
 
 class ControlPanel():
-    def __init__(self, pd_info_list, log_level: LogLevel=LogLevel.Info,
-                 master_key: bytes=None):
+    def __init__(
+            self,
+            pd_info_list: list[PDInfo],
+            log_level: LogLevel=LogLevel.Info,
+            event_handler: Callable[[int, dict], int]=None
+        ) -> None:
         self.pd_addr = []
         info_list = []
         self.num_pds = len(pd_info_list)
@@ -24,12 +26,9 @@ class ControlPanel():
             self.pd_addr.append(pd_info.address)
             info_list.append(pd_info.get())
         self.event_queue = [ queue.Queue() for i in self.pd_addr ]
-        if master_key:
-            self.ctx = osdp_sys.ControlPanel(info_list, master_key=master_key)
-        else:
-            self.ctx = osdp_sys.ControlPanel(info_list)
-        self.ctx.set_event_callback(self.event_handler)
-        self.ctx.set_loglevel(log_level)
+        osdp_sys.set_loglevel(log_level)
+        self.ctx = osdp_sys.ControlPanel(info_list)
+        self.set_event_handler(event_handler)
         self.event = None
         self.lock = None
         self.thread = None
@@ -42,8 +41,15 @@ class ControlPanel():
             lock.release()
             time.sleep(0.020) #sleep for 20ms
 
-    def event_handler(self, pd, event):
+    def set_event_handler(self, handler: Callable[[int, dict], int]):
+        if handler:
+            self.ctx.set_event_callback(handler)
+        else:
+            self.ctx.set_event_callback(self.event_handler)
+
+    def event_handler(self, pd, event) -> int:
         self.event_queue[pd].put(event)
+        return 0
 
     def get_event(self, address, timeout: int=5):
         pd = self.pd_addr.index(address)
@@ -63,6 +69,29 @@ class ControlPanel():
     def is_online(self, address):
         pd = self.pd_addr.index(address)
         return bool(self.status() & (1 << pd))
+
+    def get_pd_id(self, address: int) -> PdId:
+        pd = self.pd_addr.index(address)
+        self.lock.acquire()
+        pd_id_dict = self.ctx.get_pd_id(pd)
+        self.lock.release()
+        if pd_id_dict:
+            # version: int, model: int, vendor_code: int, serial_number: int, firmware_version: int
+            pd_id = PdId(
+                pd_id_dict['version'],
+                pd_id_dict['model'],
+                pd_id_dict['vendor_code'],
+                pd_id_dict['serial_number'],
+                pd_id_dict['firmware_version']
+            )
+        return pd_id
+
+    def check_capability(self, address: int, cap: Capability) -> Tuple[int, int]:
+        pd = self.pd_addr.index(address)
+        self.lock.acquire()
+        compliance_level, num_items = self.ctx.check_capability(pd, cap)
+        self.lock.release()
+        return (compliance_level, num_items)
 
     def get_num_online(self):
         online = 0
@@ -90,12 +119,17 @@ class ControlPanel():
                 sc_active += 1
         return sc_active
 
-    def send_command(self, address, cmd):
+    def submit_command(self, address, cmd):
         pd = self.pd_addr.index(address)
         self.lock.acquire()
-        ret = self.ctx.send_command(pd, cmd)
+        ret = self.ctx.submit_command(pd, cmd)
         self.lock.release()
         return ret
+
+    def send_command(self, address, cmd):
+        from warnings import warn
+        warn("This method has been renamed to submit_command", DeprecationWarning, 2)
+        return self.submit_command(address, cmd)
 
     def set_flag(self, address, flag: LibFlag):
         pd = self.pd_addr.index(address)
@@ -155,7 +189,7 @@ class ControlPanel():
             count += 1
         return res
 
-    def online_wait(self, address, timeout=5):
+    def online_wait(self, address, timeout=8):
         count = 0
         res = False
         while count < timeout * 2:
@@ -165,6 +199,11 @@ class ControlPanel():
                 break
             count += 1
         return res
+
+    def offline_wait(self, address, timeout=8):
+        count = 0
+        time.sleep(timeout)
+        return self.is_online(address) == False
 
     def sc_wait(self, address, timeout=5):
         count = 0

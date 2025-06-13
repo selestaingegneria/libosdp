@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+ * Copyright (c) 2020-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -40,24 +40,28 @@ static PyObject *pyosdp_pd_is_sc_active(pyosdp_pd_t *self, PyObject *args)
 		Py_RETURN_FALSE;
 }
 
-#define pyosdp_pd_notify_event_doc                                               \
+#define pyosdp_pd_submit_event_doc                                               \
 	"Notify the CP of an OSDP event\n"                                       \
 	"\n"                                                                     \
 	"@param event A dict of event keys and values. See osdp.h for details\n" \
 	"\n"                                                                     \
 	"@return None\n"
-static PyObject *pyosdp_pd_notify_event(pyosdp_pd_t *self, PyObject *args)
+static PyObject *pyosdp_pd_submit_event(pyosdp_pd_t *self, PyObject *args)
 {
 	PyObject *event_dict;
-	struct osdp_event event;
+	struct osdp_event event = {};
 
-	if (!PyArg_ParseTuple(args, "O", &event_dict))
+	if (!PyArg_ParseTuple(args, "O", &event_dict)) {
+		PyErr_SetString(PyExc_TypeError, "Failed to parse event dict!");
 		return NULL;
+	}
 
-	if (pyosdp_make_struct_event(&event, event_dict))
+	if (pyosdp_make_struct_event(&event, event_dict)) {
+		PyErr_SetString(PyExc_TypeError, "Unable to get event struct!");
 		return NULL;
+	}
 
-	if (osdp_pd_notify_event(self->ctx, &event)) {
+	if (osdp_pd_submit_event(self->ctx, &event)) {
 		Py_RETURN_FALSE;
 	}
 
@@ -88,22 +92,12 @@ static int pd_command_cb(void *arg, struct osdp_cmd *cmd)
 
 	arglist = Py_BuildValue("(O)", dict);
 	result = PyObject_CallObject(self->command_cb, arglist);
+	PyArg_ParseTuple(result, "IO", &ret_val, &result);
 
-	if (result && PyDict_Check(result)) {
-		if (pyosdp_dict_get_int(result, "return_code", &ret_val) == 0) {
-			/**
-			 * If ret_val > 0 and we can make a MFGREP command
-			 * out of the dict from python, we will reply with it.
-			 * If not, reply with NAK.
-			 */
-			if (ret_val > 0) {
-				memset(cmd, 0, sizeof(struct osdp_cmd));
-				if (pyosdp_make_struct_cmd(cmd, result) < 0)
-					ret_val = -1;
-				else if (cmd->id != OSDP_CMD_MFG)
-					ret_val = -1;
-			}
-		}
+	if (ret_val == 0 && result && PyDict_Check(result)) {
+		memset(cmd, 0, sizeof(struct osdp_cmd));
+		if (pyosdp_make_struct_cmd(cmd, result) < 0)
+			ret_val = -1;
 	}
 
 	Py_XDECREF(dict);
@@ -220,7 +214,7 @@ static int pyosdp_add_pd_cap(PyObject *obj, osdp_pd_info_t *info)
 	info->cap = cap;
 	return 0;
 error:
-	safe_free(cap);
+	free(cap);
 	return -1;
 }
 
@@ -234,13 +228,11 @@ error:
 	"@return None"
 static int pyosdp_pd_tp_init(pyosdp_pd_t *self, PyObject *args, PyObject *kwargs)
 {
-	int ret, scbk_length;
+	int scbk_length;
 	osdp_t *ctx;
 	osdp_pd_info_t info = { 0 };
-	enum channel_type channel_type;
-	char *device = NULL, *channel_type_str = NULL;
 	static char *kwlist[] = { "", "capabilities", NULL };
-	PyObject *py_info, *py_pd_cap_list;
+	PyObject *py_info, *py_pd_cap_list, *channel;
 	uint8_t *scbk = NULL;
 
 	/* call base class constructor */
@@ -267,14 +259,12 @@ static int pyosdp_pd_tp_init(pyosdp_pd_t *self, PyObject *args, PyObject *kwargs
 	if (pyosdp_dict_get_int(py_info, "flags", &info.flags))
 		goto error;
 
-	if (pyosdp_dict_get_int(py_info, "channel_speed", &info.baud_rate))
-		goto error;
-
-	if (pyosdp_dict_get_str(py_info, "channel_type", &channel_type_str))
-		goto error;
-
-	if (pyosdp_dict_get_str(py_info, "channel_device", &device))
-		goto error;
+	channel = PyDict_GetItemString(py_info, "channel");
+	if (channel == NULL) {
+		PyErr_Format(PyExc_KeyError, "channel object missing");
+		return -1;
+	}
+	pyosdp_get_channel(channel, &info.channel);
 
 	if (pyosdp_dict_get_int(py_info, "version", &info.id.version))
 		goto error;
@@ -300,25 +290,6 @@ static int pyosdp_pd_tp_init(pyosdp_pd_t *self, PyObject *args, PyObject *kwargs
 	}
 	PyErr_Clear();
 
-	channel_type = channel_guess_type(channel_type_str);
-	if (channel_type == CHANNEL_TYPE_ERR) {
-		PyErr_SetString(PyExc_ValueError,
-				"unable to guess channel type");
-		goto error;
-	}
-
-	ret = channel_open(&self->base.channel_manager, channel_type, device,
-			   info.baud_rate, 1);
-	if (ret != CHANNEL_ERR_NONE && ret != CHANNEL_ERR_ALREADY_OPEN) {
-		PyErr_SetString(PyExc_PermissionError,
-				"Unable to open channel");
-		goto error;
-	}
-
-	channel_get(&self->base.channel_manager, device, &info.channel.id,
-		    &info.channel.data, &info.channel.send, &info.channel.recv,
-		    &info.channel.flush);
-
 	ctx = osdp_pd_setup(&info);
 	if (ctx == NULL) {
 		PyErr_SetString(PyExc_Exception, "failed to setup pd");
@@ -326,14 +297,10 @@ static int pyosdp_pd_tp_init(pyosdp_pd_t *self, PyObject *args, PyObject *kwargs
 	}
 
 	self->ctx = ctx;
-	safe_free(channel_type_str);
-	safe_free(device);
-	safe_free((void *)info.cap);
+	free((void *)info.cap);
 	return 0;
 error:
-	safe_free(channel_type_str);
-	safe_free(device);
-	safe_free((void *)info.cap);
+	free((void *)info.cap);
 	return -1;
 }
 
@@ -367,8 +334,8 @@ static PyMethodDef pyosdp_pd_tp_methods[] = {
 	  METH_NOARGS, pyosdp_pd_refresh_doc },
 	{ "set_command_callback", (PyCFunction)pyosdp_pd_set_command_callback,
 	  METH_VARARGS, pyosdp_pd_set_command_callback_doc },
-	{ "notify_event", (PyCFunction)pyosdp_pd_notify_event,
-	  METH_VARARGS, pyosdp_pd_notify_event_doc },
+	{ "submit_event", (PyCFunction)pyosdp_pd_submit_event,
+	  METH_VARARGS, pyosdp_pd_submit_event_doc },
 	{ "is_sc_active", (PyCFunction)pyosdp_pd_is_sc_active,
 	  METH_NOARGS, pyosdp_pd_is_sc_active_doc },
 	{ "is_online", (PyCFunction)pyosdp_pd_is_online,
@@ -383,7 +350,7 @@ static PyMemberDef pyosdp_pd_tp_members[] = {
 };
 
 PyTypeObject PeripheralDeviceTypeObject = {
-	PyVarObject_HEAD_INIT(&PyType_Type, 0).tp_name = "PeripheralDevice",
+	PyVarObject_HEAD_INIT(NULL, 0).tp_name = "PeripheralDevice",
 	.tp_basicsize = sizeof(pyosdp_pd_t),
 	.tp_itemsize = 0,
 	.tp_dealloc = (destructor)pyosdp_pd_tp_dealloc,

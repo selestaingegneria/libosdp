@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+ * Copyright (c) 2019-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -165,7 +165,7 @@ void test_cp_phy_teardown(struct test *t)
 
 void run_cp_phy_tests(struct test *t)
 {
-	printf("\nBeing cp_phy tests\n");
+	printf("\nStarting cp_phy tests\n");
 
 	if (test_cp_phy_setup(t))
 		return;

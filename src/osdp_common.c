@@ -1,14 +1,17 @@
 /*
- * Copyright (c) 2019-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+ * Copyright (c) 2019-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE /* See feature_test_macros(7) */
+#endif
+
 #include <stdarg.h>
 #include <stdlib.h>
 #ifndef CONFIG_DISABLE_PRETTY_LOGGING
-#include <unistd.h>
 #endif
-#include <sys/time.h>
 
 #include "osdp_common.h"
 
@@ -29,7 +32,7 @@ uint16_t osdp_compute_crc16(const uint8_t *buf, size_t len)
 	return crc16_itu_t(0x1D0F, buf, len);
 }
 
-int64_t osdp_millis_now(void)
+__weak int64_t osdp_millis_now(void)
 {
 	return millis_now();
 }
@@ -97,7 +100,7 @@ const char *osdp_reply_name(int reply_id)
 		[REPLY_RSTATR    - REPLY_ACK] = "RSTATR",
 		[REPLY_RAW       - REPLY_ACK] = "RAW",
 		[REPLY_FMT       - REPLY_ACK] = "FMT",
-		[REPLY_KEYPPAD   - REPLY_ACK] = "KEYPPAD",
+		[REPLY_KEYPAD    - REPLY_ACK] = "KEYPAD",
 		[REPLY_COM       - REPLY_ACK] = "COM",
 		[REPLY_BIOREADR  - REPLY_ACK] = "BIOREADR",
 		[REPLY_BIOMATCHR - REPLY_ACK] = "BIOMATCHR",
@@ -106,10 +109,10 @@ const char *osdp_reply_name(int reply_id)
 		[REPLY_FTSTAT    - REPLY_ACK] = "FTSTAT",
 		[REPLY_MFGREP    - REPLY_ACK] = "MFGREP",
 		[REPLY_BUSY      - REPLY_ACK] = "BUSY",
-		[REPLY_PIVDATAR  - REPLY_ACK] = "PIVDATA",
-		[REPLY_CRAUTHR   - REPLY_ACK] = "CRAUTH",
+		[REPLY_PIVDATAR  - REPLY_ACK] = "PIVDATAR",
+		[REPLY_CRAUTHR   - REPLY_ACK] = "CRAUTHR",
 		[REPLY_MFGSTATR  - REPLY_ACK] = "MFGSTATR",
-		[REPLY_MFGERRR   - REPLY_ACK] = "MFGERR",
+		[REPLY_MFGERRR   - REPLY_ACK] = "MFGERRR",
 		[REPLY_XRD       - REPLY_ACK] = "XRD",
 	};
 
@@ -121,11 +124,6 @@ const char *osdp_reply_name(int reply_id)
 		return "UNKNOWN";
 	}
 	return name;
-}
-
-void osdp_keyset_complete(struct osdp_pd *pd)
-{
-	cp_keyset_complete(pd);
 }
 
 int osdp_rb_push(struct osdp_rb *p, uint8_t data)
@@ -190,7 +188,7 @@ int osdp_rb_pop_buf(struct osdp_rb *p, uint8_t *buf, int max_len)
 
 OSDP_EXPORT
 void osdp_logger_init(const char *name, int log_level,
-		       osdp_log_puts_fn_t log_fn)
+		      osdp_log_puts_fn_t log_fn)
 {
 	logger_t ctx;
 	FILE *file = NULL;
@@ -219,15 +217,15 @@ void osdp_set_log_callback(osdp_log_callback_fn_t cb)
 OSDP_EXPORT
 const char *osdp_get_version()
 {
-	return PROJECT_NAME "-" PROJECT_VERSION;
+	return PROJECT_VERSION;
 }
 
 OSDP_EXPORT
 const char *osdp_get_source_info()
 {
-	if (strnlen(GIT_TAG, 8) > 0) {
+	if (strlen(GIT_TAG) > 0) {
 		return GIT_BRANCH " (" GIT_TAG ")";
-	} else if (strnlen(GIT_REV, 8) > 0) {
+	} else if (strlen(GIT_REV) > 0) {
 		return GIT_BRANCH " (" GIT_REV GIT_DIFF ")";
 	} else {
 		return GIT_BRANCH;

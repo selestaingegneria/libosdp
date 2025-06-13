@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2021-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+#  Copyright (c) 2021-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
 #
 #  SPDX-License-Identifier: Apache-2.0
 #
@@ -8,6 +8,7 @@ import time
 import random
 import pytest
 from osdp import *
+from conftest import make_fifo_pair, cleanup_fifo_pair
 
 sender_data = [ random.randint(0, 255) for _ in range(4096) ]
 
@@ -65,13 +66,19 @@ receiver_fops = {
 
 pd_cap = PDCapabilities([])
 
-pd_info_list = [
-    PDInfo(101, scbk=KeyStore.gen_key(), flags=[ LibFlag.EnforceSecure ], name='chn-0'),
-]
+f1, f2 = make_fifo_pair("file")
+key = KeyStore.gen_key()
 
-pd = PeripheralDevice(pd_info_list[0], pd_cap, log_level=LogLevel.Debug)
-
-cp = ControlPanel(pd_info_list, log_level=LogLevel.Debug)
+pd = PeripheralDevice(
+    PDInfo(101, f1, scbk=key, flags=[ LibFlag.EnforceSecure ]),
+    pd_cap,
+    log_level=LogLevel.Debug
+)
+cp = ControlPanel([
+        PDInfo(101, f2, scbk=key, flags=[ LibFlag.EnforceSecure ]),
+    ],
+    log_level=LogLevel.Debug
+)
 
 @pytest.fixture(scope='module', autouse=True)
 def setup_test():
@@ -84,6 +91,7 @@ def setup_test():
 def teardown_test():
     cp.teardown()
     pd.teardown()
+    cleanup_fifo_pair("file")
 
 def test_file_transfer(utils):
     # Register file OPs and kick off a transfer
@@ -94,7 +102,7 @@ def test_file_transfer(utils):
         'id': 13,
         'flags': 0
     }
-    assert cp.send_command(101, file_tx_cmd)
+    assert cp.submit_command(101, file_tx_cmd)
     assert pd.get_command() == file_tx_cmd
 
     # Monitor transfer status
@@ -125,7 +133,7 @@ def test_file_tx_abort(utils):
         'id': 13,
         'flags': 0
     }
-    assert cp.send_command(101, file_tx_cmd)
+    assert cp.submit_command(101, file_tx_cmd)
     assert pd.get_command() == file_tx_cmd
 
     # Allow some number of transfers to go through
@@ -136,10 +144,10 @@ def test_file_tx_abort(utils):
         'id': 13,
         'flags': CommandFileTxFlags.Cancel
     }
-    assert cp.send_command(101, file_tx_abort)
+    assert cp.submit_command(101, file_tx_abort)
 
     # Allow some time for CP to send the abort to PD
     time.sleep(0.2)
 
-    status = cp.get_file_tx_status(101)
-    assert status == None
+    assert cp.get_file_tx_status(101) == None
+    assert pd.get_file_tx_status() == None

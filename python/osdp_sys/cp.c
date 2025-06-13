@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+ * Copyright (c) 2020-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -38,6 +38,9 @@ int pyosdp_cp_event_cb(void *data, int address, struct osdp_event *event)
 {
 	pyosdp_cp_t *self = data;
 	PyObject *arglist, *result, *event_dict;
+
+	if (!self->event_cb)
+		return 0;
 
 	if (pyosdp_make_dict_event(&event_dict, event))
 		return -1;
@@ -86,32 +89,83 @@ static PyObject *pyosdp_cp_refresh(pyosdp_cp_t *self, pyosdp_cp_t *args)
 	Py_RETURN_NONE;
 }
 
-#define pyosdp_cp_send_command_doc                                                   \
+#define pyosdp_cp_get_pd_id_doc                                                      \
+	"Get PD_ID info as reported by the PD\n"                                     \
+	"\n"                                                                         \
+	"@param pd PD offset number\n"                                               \
+	"\n"                                                                         \
+	"@return dict with PD_ID info\n"
+static PyObject *pyosdp_cp_get_pd_id(pyosdp_cp_t *self, PyObject *args)
+{
+	int pd;
+	struct osdp_pd_id pd_id = {0};
+
+	if (!PyArg_ParseTuple(args, "I", &pd)) {
+		PyErr_SetString(PyExc_ValueError, "Invalid arguments");
+		Py_RETURN_NONE;
+	}
+
+	if (osdp_cp_get_pd_id(self->ctx, pd, &pd_id)) {
+		PyErr_SetString(PyExc_ValueError, "invalid PD offset");
+		Py_RETURN_NONE;
+	}
+
+	return pyosdp_make_dict_pd_id(&pd_id);
+}
+
+#define pyosdp_cp_check_capability_doc                                                 \
+	"Get capability associated to a function_code as reported by the PD\n"       \
+	"\n"                                                                         \
+	"@param pd PD offset number\n"                                               \
+	"@param capability function code\n"                                          \
+	"\n"                                                                         \
+	"@return (compliance_level, num_items)\n"
+static PyObject *pyosdp_cp_check_capability(pyosdp_cp_t *self, PyObject *args)
+{
+	int pd, function_code;
+	struct osdp_pd_cap cap = {0};
+
+	if (!PyArg_ParseTuple(args, "II", &pd, &function_code)) {
+		PyErr_SetString(PyExc_ValueError, "Invalid arguments");
+		Py_RETURN_NONE;
+	}
+
+	cap.function_code = function_code;
+	if (osdp_cp_get_capability(self->ctx, pd, &cap)) {
+		PyErr_SetString(PyExc_ValueError, "invalid PD offset or function code");
+		Py_RETURN_NONE;
+	}
+
+	return Py_BuildValue("(II)", cap.compliance_level, cap.num_items);
+}
+
+#define pyosdp_cp_submit_command_doc                                                   \
 	"Send an OSDP command to a PD\n"                                             \
 	"\n"                                                                         \
 	"@param pd PD offset number\n"                                               \
 	"@param command A dict of command keys and values. See osdp.h for details\n" \
 	"\n"                                                                         \
 	"@return boolean status of command submission\n"
-static PyObject *pyosdp_cp_send_command(pyosdp_cp_t *self, PyObject *args)
+static PyObject *pyosdp_cp_submit_command(pyosdp_cp_t *self, PyObject *args)
 {
 	int pd, ret;
 	PyObject *cmd_dict;
-	struct osdp_cmd cmd;
+	struct osdp_cmd cmd = {};
 
-	if (!PyArg_ParseTuple(args, "IO!", &pd, &PyDict_Type, &cmd_dict))
+	if (!PyArg_ParseTuple(args, "IO!", &pd, &PyDict_Type, &cmd_dict)) {
+		PyErr_SetString(PyExc_ValueError, "Invalid arguments");
 		Py_RETURN_FALSE;
+	}
 
 	if (pd < 0 || pd >= self->num_pd) {
 		PyErr_SetString(PyExc_ValueError, "Invalid PD offset");
 		Py_RETURN_FALSE;
 	}
 
-	memset(&cmd, 0, sizeof(struct osdp_cmd));
 	if (pyosdp_make_struct_cmd(&cmd, cmd_dict))
 		Py_RETURN_FALSE;
 
-	ret = osdp_cp_send_command(self->ctx, pd, &cmd);
+	ret = osdp_cp_submit_command(self->ctx, pd, &cmd);
 
 	if (ret == 0)
 		Py_RETURN_TRUE;
@@ -200,17 +254,14 @@ static void pyosdp_cp_tp_dealloc(pyosdp_cp_t *self)
 	"OSDP Control Panel Class\n"                                                         \
 	"\n"                                                                                 \
 	"@param pd_info List of PD info dicts. See osdp_pd_info_t in osdp.h for more info\n" \
-	"@param master_key A hexadecimal string representation of the master key\n"          \
 	"\n"                                                                                 \
 	"@return None"
 static int pyosdp_cp_tp_init(pyosdp_cp_t *self, PyObject *args, PyObject *kwargs)
 {
-	int i, ret = -1, len;
+	int i, len;
 	uint8_t *scbk = NULL;
-	enum channel_type channel_type;
-	PyObject *py_info_list, *py_info;
+	PyObject *py_info_list, *py_info, *channel;
 	static char *kwlist[] = { "", NULL };
-	char *device = NULL, *channel_type_str = NULL;
 	osdp_t *ctx;
 	osdp_pd_info_t *info, *info_list = NULL;
 
@@ -255,16 +306,12 @@ static int pyosdp_cp_tp_init(pyosdp_cp_t *self, PyObject *args, PyObject *kwargs
 		if (pyosdp_dict_get_int(py_info, "flags", &info->flags))
 			goto error;
 
-		if (pyosdp_dict_get_int(py_info, "channel_speed",
-					&info->baud_rate))
-			goto error;
-
-		if (pyosdp_dict_get_str(py_info, "channel_type",
-					&channel_type_str))
-			goto error;
-
-		if (pyosdp_dict_get_str(py_info, "channel_device", &device))
-			goto error;
+		channel = PyDict_GetItemString(py_info, "channel");
+		if (channel == NULL) {
+			PyErr_Format(PyExc_KeyError, "channel object missing");
+			return -1;
+		}
+		pyosdp_get_channel(channel, &info->channel);
 
 		if (pyosdp_dict_get_bytes(py_info, "scbk", &scbk, &len) == 0) {
 			if (scbk && len != 16) {
@@ -275,25 +322,6 @@ static int pyosdp_cp_tp_init(pyosdp_cp_t *self, PyObject *args, PyObject *kwargs
 			info->scbk = scbk;
 		}
 		PyErr_Clear();
-
-		channel_type = channel_guess_type(channel_type_str);
-		if (channel_type == CHANNEL_TYPE_ERR) {
-			PyErr_SetString(PyExc_ValueError,
-					"unable to guess channel type");
-			goto error;
-		}
-
-		ret = channel_open(&self->base.channel_manager, channel_type,
-				   device, info->baud_rate, 0);
-		if (ret != CHANNEL_ERR_NONE &&
-		    ret != CHANNEL_ERR_ALREADY_OPEN) {
-			PyErr_SetString(PyExc_PermissionError,
-					"Unable to open channel");
-			goto error;
-		}
-		channel_get(&self->base.channel_manager, device, &info->channel.id,
-			    &info->channel.data, &info->channel.send,
-			    &info->channel.recv, &info->channel.flush);
 	}
 
 	ctx = osdp_cp_setup(self->num_pd, info_list);
@@ -307,9 +335,7 @@ static int pyosdp_cp_tp_init(pyosdp_cp_t *self, PyObject *args, PyObject *kwargs
 	self->ctx = ctx;
 	return 0;
 error:
-	safe_free(info_list);
-	safe_free(channel_type_str);
-	safe_free(device);
+	free(info_list);
 	return -1;
 }
 
@@ -343,8 +369,8 @@ static PyMethodDef pyosdp_cp_tp_methods[] = {
 	  METH_NOARGS, pyosdp_cp_refresh_doc },
 	{ "set_event_callback", (PyCFunction)pyosdp_cp_set_event_callback,
 	  METH_VARARGS, pyosdp_cp_set_event_callback_doc },
-	{ "send_command", (PyCFunction)pyosdp_cp_send_command,
-	  METH_VARARGS, pyosdp_cp_send_command_doc },
+	{ "submit_command", (PyCFunction)pyosdp_cp_submit_command,
+	  METH_VARARGS, pyosdp_cp_submit_command_doc },
 	{ "status", (PyCFunction)pyosdp_cp_pd_status,
 	  METH_NOARGS, pyosdp_cp_pd_status_doc },
 	{ "sc_status", (PyCFunction)pyosdp_cp_sc_status,
@@ -353,6 +379,10 @@ static PyMethodDef pyosdp_cp_tp_methods[] = {
 	  METH_NOARGS, pyosdp_cp_set_flag_doc },
 	{ "clear_flag", (PyCFunction)pyosdp_cp_clear_flag,
 	  METH_NOARGS, pyosdp_cp_clear_flag_doc },
+	{ "get_pd_id", (PyCFunction)pyosdp_cp_get_pd_id,
+	  METH_VARARGS, pyosdp_cp_get_pd_id_doc },
+	{ "check_capability", (PyCFunction)pyosdp_cp_check_capability,
+	  METH_VARARGS, pyosdp_cp_check_capability_doc },
 	{ NULL, NULL, 0, NULL } /* Sentinel */
 };
 
@@ -361,7 +391,7 @@ static PyMemberDef pyosdp_cp_tp_members[] = {
 };
 
 static PyTypeObject ControlPanelTypeObject = {
-	PyVarObject_HEAD_INIT(&PyType_Type, 0).tp_name = "ControlPanel",
+	PyVarObject_HEAD_INIT(NULL, 0).tp_name = "ControlPanel",
 	.tp_doc = pyosdp_cp_tp_init_doc,
 	.tp_basicsize = sizeof(pyosdp_cp_t),
 	.tp_itemsize = 0,

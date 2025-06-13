@@ -1,3 +1,336 @@
+v3.0.8
+------
+
+12 November 2024
+
+A quick re-relase of v3.0.7 with 2 critical fixes needed for Rust and
+PlatformIO. Refer to previous relase for actual change log.
+
+Fixes:
+  - utils: Bump submodule to get __BARE_METAL__ target fix
+  - scripts: Fix make-release.sh after PlatformIO changes
+
+
+v3.0.7
+------
+
+11 November 2024
+
+This release has been long overdue, bringing in a lot of enhancements and
+stability fixes. Most notable change include PlatformIO support.
+
+Enhancements:
+  - CI: Fix PlatformIO publish workflow
+  - scripts: Add release hooks for platformio
+  - PlatformIO: check-in a cached copy of generated headers
+  - PlatformIO: Add initial port for PlatformIO
+  - doc: Split osdp_pd_into_t into it's own section
+  - cmake: Always export compile_commands.json
+  - ci: Move to actions/upload-artifact@v4 to fix CI builds
+  - build: Make changes to allow nix/nixos builds
+  - libosdp: Make a copy of PD name from pd_info_t
+  - file: Add support various flow control flags
+  - API: Add support for PD status change events.
+  - file: Add support for keep alive messages
+  - cp: Add support for delaying file transfer
+  - file: Switch to using to BYTES to/from unsigned types macros
+  - file: Fix multiple assumptions about target endianess
+  - crypto: Anotate panic method with 'noreturn' attribute
+  - cmake: Add more sanitizers and rename the config key for it
+  - scripts: run_tests.sh: Switch to cmake based build and run invocations
+  - cmake, make: generate osdp_config.h in build/include dir
+  - doc: Update packet and data trace documentation
+  - Rename osdp_pcap.* as osdp_diag.* to allow for future enhancements
+  - examples/python: PD: Add singal handler to exit the script
+  - python: Enable packet trace builds by default
+  - API: Add a flag to enable packet trace at runtime
+  - scripts: Update run_tests.sh to call functions for different test suites
+  - cp: phy: Allow plaintext NACKs when SC is active
+  - cp: Add a log line when retrying SC after timeout
+  - cp: keyset complete don't request SC restart if PD is not online
+  - Prefix CP/PD tags to setup log line
+  - cp: Add entry for handling OSDP_ERR_PKT_NACK to add comments
+  - cp: Set reply_id to REPLY_INVALID before sending a command
+  - cp: Introduce "probe" state for PDs that don't respond
+  - doc: Update cmake invocations for cross-platform builds
+  - api: Remove OSDP_EXPORT decorations in declarations
+  - cmake: Exclude targets that cannot be built when using MSVC
+  - doc: Add section about vcpkg usage
+  - API: Add new setup flag to guard notification events
+  - API: Add support notification events
+  - scripts: Add a tests runner scripts
+  - doc: Add deprecation notice for osdpctl
+  - pytest: Add tests for pd_id and pd_cap API
+  - test: Add some info message when invoked with -n flag
+  - python: osdp: Add method in KeyStore to persisting a key
+  - python: osdp: Consume and export pd_id and pd_cap getters
+  - python: osdp_sys: Enable pd_cap and pd_id getters
+  - phy: Lower log level for packet_scan_sckip reports
+  - phy: Allow multiple mark bytes before SOM
+
+Fixes:
+  - Fix handling of empty SCS17/SCS18 messages
+  - Annotate osdp_millis_now definition with __weak atrribute
+  - python: Fix LED commands with temporary and permanent records
+  - Copied osdp_export.h from correct location on install
+  - cp: Fix 'REPLY_BUSY' handling logic
+  - pd: Don't discard SC before acknowledging keyset command
+  - cp: Move cp_cmd_free() out of cp_translate_cmd()
+  - cp: Fix typo in flag CP_REQ_OFFLINE value
+  - file: Fix bug in the exclusive flag collection
+  - libosdp: Fix memory leak when file ops is registered
+  - cp: Fix loss of tamper bit when saving power bit in status event
+  - utils: Pull in fixes for loging and make
+  - utils: Bump submodule for windows build fix
+  - cp: Fix segfault in osdp_cp_teardown()
+  - python: Fix broken build due to wrong return type
+  - python: Fix potential null-ptr-deref during event callback
+  - Bump utils and fix some typos in osdp.h
+  - examples: Fix makefile and some minor udpates
+  - pd: Fix firmware_version reports in PD_ID
+
+
+v3.0.6
+------
+
+10 May 2024
+
+Patch release to address rust build failure issue.
+
+Fixes:
+  - examples: python: Fix pyserial read timeout
+  - Continue normally on successful command callback on status commands
+  - phy: Enhance package scan logging by printing mark-byte
+  - ci: Exclude cpp sample from all and build explicitly in build-ci
+  - ci: Fix broken release action
+
+
+v3.0.5
+------
+
+23 March 2024
+
+More vcpkg integration issue fixes. This relaese is also about more platform
+suppport.
+
+Enhancements:
+  - ci: Enhance to run on different platforms; start doc builds
+  - cmake: Add options to disable shared/static builds
+
+Fixes:
+  - examples: cpp: Use std::this_thread::sleep_for instead of usleep
+  - doc: Fix doxygen build by copying and patching osdp.h
+  - api: Fix some more doxygen formatting issues
+  - doc: Remove deprecated doxygen config entries
+  - cmake: cpack: Fix package definitions
+  - crypto: openssl: Remove call to ERR_print_errors_fp()
+  - crypo: Add missing headers for openssl.c
+  - api: Add OSDP_EXPORT to exported methods in osdp.h
+  - python: example: Update README.md with socat link option
+  - ci: Fix cross-platform build and change cpack artifact path
+  - cmake: Fix MSVC OSDP_EXPORT macro issue
+  - cmake: Fix MSVC compiler flag issue
+  - CI: Add an on-demand cross platform build check runner
+  - cmake: Fix broken CI build due utils build
+
+
+v3.0.4
+------
+
+19 March 2024
+
+A release to patch cmkae issues found during vcpkg integration. This version
+will be pegged to the first vcpkg release.
+
+Fixes:
+  - cmake: Fix issues found when integrating with vcpkg
+  - Fix input_check() macros for windows builds
+  - api: Fixup comamnd queue flush function name
+
+
+v3.0.3
+------
+
+13 March 2024
+
+Minor release with a few fixes required for rust development to progress
+
+Enhancements:
+  - make: Add support for make install
+  - api: cp: Add method to flush command queue
+  - python: osdp_sys: Add some error context for public API
+  - doc: Add libosdp/compatibility to top level index.rst
+
+Fixes:
+  - doc: Fixup doc in multiple places
+  - api: More doxygen fixups
+  - cmake: Fix packet trace and data trace linkage
+  - api: Fix regression caused by doxygen formatting commit
+  - api: Fix doxygen comments style all over osdp.h
+  - Fix minor typos in the Wireshark payload dissector
+  - doc: More README updates
+  - doc: Update README; fix compatibility table
+  - libosdp: Fix issue with SC retry timer
+  - utils: Pull in fix for time usage on Windows
+
+
+v3.0.2
+------
+
+09 March 2024
+
+Yet another minor release to address some of the issues that were identified in
+3.0.0 release. With this release, LibOSDP supports Windows as a first-class
+citizen.
+
+Enhancements:
+  - pytest: run.sh: Add an option to skip running the tests
+  - doc: Add LibOSDP compatibility table
+  - publish-pypi: Enable windows build/publish
+  - doc: Update security.md
+  - python: example: Add some CLI args and add a README.md
+  - pytest: Add some stage info for run.sh
+  - libosdp: phy: some minor houekeeping
+  - python: Deprecate master key based key derivation
+  - python: Remove concrete "channel" implementations
+  - libosdp: file: Make impossible conditions as BUG_ON()
+  - libosdp: file: Do not disrupt SC when file TX fails
+  - pcap: Replace ':' with '_' in pcap file name timestamp
+  - utils: bump submodule to fix __weak warning
+
+Fixes:
+  - Fix bug in SC setup due to missing call to cp_keyset_complete
+  - python: Fix buggy call to PyArg_Parse due to type of len
+  - python: fix some minor issues for MSVC to build libosdp
+  - pcap: Fix file name character replacement bug
+  - dissector: Remove extra space in command ID text
+  - libosdp: Fix broken SC due to missing sc_init call
+
+
+v3.0.1
+------
+
+20 February 2024
+
+A quick follow up release adding a few key features that got left out in 3.0.0.
+Most notably, packet trace and data trace infrastructure has been reworked and
+a custom Wireshark protocol dissector for OSDP was added. Additionally, Some
+efforts has been made to support Windows as a build platform.
+
+Enhancements:
+  - libosdp: Add Packet scan skipped bytes instrumentation
+  - pcap: Move declarations to a separate header
+  - doc: Update info about dissector loading on windows
+  - libosdp: Add support for windows builds
+  - dissector: Append command/reply name to tree view for better analysis
+  - libosdp: Migrate rust code to a dedicated repo
+  - misc: dissector: Add support for data tracer
+  - libosdp: data_trace: Fix bug in packet length passed to tracer
+  - libosdp: pcap: Log the number of packets captured
+  - libosdp: pcap: Bump utils submodule to fix issues
+  - libosdp: Extend tracing infrastructure to DATA_TRACE
+  - libosdp: Add timestamp to trace files for uniqueness
+  - libosdp: Add a custom protocol disector for WireShark
+  - libosdp: Switch to pcap based packet tracing
+
+Fixes:
+  - libosdp: Fix packet scan skipped bytes instrumentation
+  - Repaired references to osdp_millis_now()
+  - doc: Update debugging.rst and README.md with new tracing changes
+  - examples: python: Fixup some more minor issues
+  - libosdp: Rename samples/ as examples/ as it sounds better
+  - examples: python: Fix CP and PD examples for the higher level osdp module
+  - CI: Allow publish-pypi.yml to be activated on manual triggers
+  - CI: Update python publishing to multilinux
+
+
+v3.0.0
+------
+
+14 February 2024
+
+This Major release bring rust support, CP state machine cleanups, API cleanups,
+and many other enhancemtns and fixes.
+
+Enhancements:
+  - Add rust support (single entry for 80+ patches)
+  - Rewrite osdpctl in rust (single entry for many patches)
+  - chore: Update copyright year to 2024
+  - python: vendor LibOSDP sources when packaging
+  - python: Remove code referring to CMakeLists.txt version
+  - API, python: Add LED color constants from v2.2 of the spec
+  - doc: Update top-level README.md
+  - libosdp: cp: Move keyset completion handler to get_next_ok_state()
+  - tests: pytest: Add install_mode SCBK set test
+  - libosdp: Unify StatusReport query and event structs
+  - libosdp: cp: Move functionality away from command builders
+  - pytests: Remove timeout from CP status test
+  - python: Adapt to changes to status event/command handling
+  - libosdp: Rework status command and event handling
+  - libosdp: cp: Reword event callback mechanism to use requests
+  - libosdp: Permit REPLY_COM response for CMD_COMSET
+  - rust: Add method to make a pair of unix channels
+  - libosdp: Split events data maxlen macro as we have for commands
+  - libosdp: Reduce command/event pool size
+  - python: Add a get_file_tx_status() for PD
+  - test: unit-test: Add command and event callback logging for file tx command
+  - pyosdp: Move set_log_level() to be module method
+  - tests: unit-tests: Add initial skeleton for command test
+  - libosdp: cp: Rework CP state machine
+  - libosdp: cp: Remove some more master key related code
+  - libosdp: cp: Move call to cp_cmd_free into cp_translate_cmd
+  - libosdp: cp: Add BUG() macro and call for file TX cmd translate
+  - libosdp: cp: Decouple internal and external command queue
+  - cmake: utils,samples: Bump minimum required version
+  - libosdp: CP: Lower comeset reply log level to info
+  - libosdp: API: Do not indiate SC active when using SCBK-D
+  - libosdp: phy: Also ignore commands with PD address.MSB set
+  - libosdp: phy: Ignore reply with PD address.MSB cleared
+  - Increasing the max data contained in an OSDP enevt to 128bytes
+  - utils: Bump submodule to latest commit
+  - doc: Add some notes about make build
+  - libosdp: API: Remove osdp_set_command_complete_callback
+  - libosdp: Set PD address to 0x7F for broadcast packets
+  - libosdp: API: common: Increase PD offline status timeout to 600ms
+  - scripts: Unify release generation scripts into one place
+  - rust: Add workaround for osdp_config.h.in copy to OUT_DIR
+  - rust: cp: Add support for the new status command
+  - libosdp: cp: Add different query options for OSDP_CMD_STATUS
+  - libosdp: cp: Refactor API command handling (translating) logic
+  - python: Update README.me and samples after testing
+  - python: osdp: pd: Add support sc_wait() method
+  - python: osdp: Add support for non-blocking get_{command,event}
+  - cmake: Remove python/ subdirectory from chain
+  - python: Merge test/pytest/testlib as main python package
+  - libosdp: const-annotate some more public API
+  - libosdp: Const-ize parameters of exposed methods
+  - libosdp: Remove deprecated methods tree-wide
+  - libosdp: Add support for Magenta and Cyan LED colors
+  - libosdp: Demote osdp_logger_init to a macro alias
+
+Fixes:
+  - utils: Bump submodule to fix build failure due to VLA
+  - Fix regression in Rust binding. Commit
+    51b626c94bc39242f9793c916471bdadafe24679 increased buffer size to 128
+    bytes. Adjust binding accordingly.
+  - make: Fix configure.sh for linux
+  - libosdp: Fix warnings that break rust build
+  - utils: Bump submodule to fix log line termination issue
+  - libosdp: phy: Fix PACKET_TRACE command byte offset
+  - libosdp: phy: Fix packet trace mark byte logging
+  - doc: security: Update doc to have latest info; fix a typo
+  - libosdp: cp: Fix broken keyset for an install_mode PD
+  - CP: API: Fix callback signature in cpp header
+  - python: osdp_sys: fix memory leak in pyosdp_add_pd_cap
+  - pytest: Fix run.sh to be invokable from other dirs
+  - python: Fix pd_info builder after const qualification of info->cap
+  - src/osdp_common.c: waring: _GNU_SOURCE redefined
+  - utils: version bump - pickup fixes for gcc warnings/errors
+  - unit-test: Fix broken build due to old API drop changes
+  - Fix potential null pointer deref at LOG_* call site
+  - cp: disallow unexpected SC responses
+
+
 v2.4.0
 ------
 

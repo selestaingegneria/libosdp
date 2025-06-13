@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+ * Copyright (c) 2020-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -123,7 +123,7 @@ int pyosdp_parse_str(PyObject *obj, char **str)
 	return 0;
 }
 
-int pyosdp_parse_bytes(PyObject *obj, uint8_t **data, int *length)
+int pyosdp_parse_bytes(PyObject *obj, uint8_t **data, int *length, bool allow_empty)
 {
 	Py_ssize_t len;
 	uint8_t *buf;
@@ -131,7 +131,7 @@ int pyosdp_parse_bytes(PyObject *obj, uint8_t **data, int *length)
 	if (!obj || !PyArg_Parse(obj, "y#", &buf, &len))
 		return -1;
 
-	if (buf == NULL || len == 0) {
+	if (buf == NULL || (!allow_empty && len == 0)) {
 		PyErr_Format(PyExc_ValueError, "Unable to extact data bytes");
 		return -1;
 	}
@@ -211,7 +211,27 @@ int pyosdp_dict_get_bytes(PyObject *dict, const char *key, uint8_t **data,
 		return -1;
 	}
 
-	return pyosdp_parse_bytes(obj, data, length);
+	return pyosdp_parse_bytes(obj, data, length, false);
+}
+
+int pyosdp_dict_get_bytes_allow_empty(PyObject *dict, const char *key, uint8_t **data,
+			  int *length)
+{
+	PyObject *obj;
+
+	if (!PyDict_Check(dict)) {
+		PyErr_SetString(PyExc_TypeError, "arg is not a dict");
+		return -1;
+	}
+
+	obj = PyDict_GetItemString(dict, key);
+	if (obj == NULL) {
+		PyErr_Format(PyExc_KeyError,
+			     "Key: '%s' of type: bytes expected", key);
+		return -1;
+	}
+
+	return pyosdp_parse_bytes(obj, data, length, true);
 }
 
 int pyosdp_dict_get_object(PyObject *dict, const char *key, PyObject **obj)
@@ -226,4 +246,72 @@ int pyosdp_dict_get_object(PyObject *dict, const char *key, PyObject **obj)
 		return -1;
 
 	return 0;
+}
+
+/* --- Channel --- */
+
+static int channel_read_callback(void *data, uint8_t *buf, int maxlen)
+{
+	Py_ssize_t len;
+	PyObject *channel = data;
+	uint8_t *tmp;
+
+	PyObject *result = PyObject_CallMethod(channel, "read", "I", maxlen);
+
+	if (!result || !PyBytes_Check(result))
+		return -1;
+
+	PyArg_Parse(result, "y#", &tmp, &len);
+	if (len <= maxlen) {
+		memcpy(buf, tmp, len);
+	} else {
+		PyErr_SetString(PyExc_TypeError,
+				"read callback maxlen not respected");
+		len = -1;
+	}
+	Py_DECREF(result);
+	return len;
+}
+
+static int channel_write_callback(void *data, uint8_t *buf, int len)
+{
+	PyObject *channel = data;
+	PyObject *byte_array;
+
+	byte_array = Py_BuildValue("y#", buf, len);
+	if (byte_array == NULL)
+		return -1;
+
+	PyObject *result = PyObject_CallMethod(channel, "write", "O", byte_array);
+	if (!result || !PyLong_Check(result))
+		return -1;
+
+	len = (int)PyLong_AsLong(result);
+	Py_DECREF(result);
+	return len;
+}
+
+static void channel_flush_callback(void *data)
+{
+	PyObject *channel = data;
+
+	PyObject_CallMethod(channel, "flush", NULL);
+}
+
+void pyosdp_get_channel(PyObject *channel, struct osdp_channel *ops)
+{
+	int id = 0;
+	PyObject *id_obj;
+
+	id_obj = PyObject_GetAttrString(channel, "id");
+	if (id_obj && PyLong_Check(id_obj)) {
+		id = (int)PyLong_AsLong(id_obj);
+	}
+
+	ops->id = id;
+	ops->recv = channel_read_callback;
+	ops->send = channel_write_callback;
+	ops->flush = channel_flush_callback;
+	ops->data = channel;
+	Py_INCREF(channel);
 }

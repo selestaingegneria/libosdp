@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2021-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+#  Copyright (c) 2021-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
 #
 #  SPDX-License-Identifier: Apache-2.0
 #
@@ -8,18 +8,24 @@ import osdp_sys
 import time
 import queue
 import threading
+from typing import Callable, Tuple
 
 from .helpers import PDInfo, PDCapabilities
 from .constants import LogLevel
 
 class PeripheralDevice():
     def __init__(self, pd_info: PDInfo, pd_cap: PDCapabilities,
-                 log_level: LogLevel=LogLevel.Info):
+                 log_level: LogLevel=LogLevel.Info,
+                 command_handler: Callable[[dict], Tuple[int, dict]]=None):
         self.command_queue = queue.Queue()
         self.address = pd_info.address
+        osdp_sys.set_loglevel(log_level)
         self.ctx = osdp_sys.PeripheralDevice(pd_info.get(), capabilities=pd_cap.get())
-        self.ctx.set_loglevel(log_level)
-        self.ctx.set_command_callback(self.command_handler)
+        if command_handler:
+            self.ctx.set_command_callback(command_handler)
+        else:
+            self.ctx.set_command_callback(self.command_handler)
+        self.set_command_handler(command_handler)
         self.event = None
         self.lock = None
         self.thread = None
@@ -32,9 +38,15 @@ class PeripheralDevice():
             lock.release()
             time.sleep(0.020) #sleep for 20ms
 
-    def command_handler(self, command):
+    def command_handler(self, command) -> Tuple[int, dict]:
         self.command_queue.put(command)
-        return { "return_code": 0 }
+        return 0, None
+
+    def set_command_handler(self, handler: Callable[[dict], Tuple[int, dict]]):
+        if handler:
+            self.ctx.set_command_callback(handler)
+        else:
+            self.ctx.set_command_callback(self.command_handler)
 
     def get_command(self, timeout: int=5):
         block = timeout >= 0
@@ -44,11 +56,16 @@ class PeripheralDevice():
             return None
         return cmd
 
-    def notify_event(self, event):
+    def submit_event(self, event):
         self.lock.acquire()
-        ret = self.ctx.notify_event(event)
+        ret = self.ctx.submit_event(event)
         self.lock.release()
         return ret
+
+    def notify_event(self, event):
+        from warnings import warn
+        warn("This method has been renamed to submit_event", DeprecationWarning, 2)
+        return self.submit_event(event)
 
     def register_file_ops(self, fops):
         self.lock.acquire()
@@ -62,7 +79,7 @@ class PeripheralDevice():
     def is_online(self):
         return self.ctx.is_online()
 
-    def sc_wait(self, timeout=5):
+    def sc_wait(self, timeout=8):
         count = 0
         res = False
         while count < timeout * 2:
@@ -81,6 +98,12 @@ class PeripheralDevice():
         args = (self.event, self.lock, self.ctx,)
         self.thread = threading.Thread(name='pd', target=self.refresh, args=args)
         self.thread.start()
+
+    def get_file_tx_status(self):
+        self.lock.acquire()
+        ret = self.ctx.get_file_tx_status(0)
+        self.lock.release()
+        return ret
 
     def stop(self):
         if not self.thread:

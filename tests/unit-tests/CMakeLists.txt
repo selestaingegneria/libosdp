@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2020-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+#  Copyright (c) 2020-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
 #
 #  SPDX-License-Identifier: Apache-2.0
 #
@@ -19,18 +19,23 @@ add_library(${LIB_OSDP_TEST} STATIC EXCLUDE_FROM_ALL
 list(APPEND OSDP_UNIT_TEST_SRC
 	test.c
 	test-cp-phy.c
-	test-cp-phy-fsm.c
 	test-cp-fsm.c
 	test-file.c
+	test-commands.c
 )
 
 add_executable(${OSDP_UNIT_TEST} EXCLUDE_FROM_ALL ${OSDP_UNIT_TEST_SRC})
 
-target_link_libraries(${OSDP_UNIT_TEST}
-		      ${LIB_OSDP_TEST}
-		      osdp
-		      utils
-		      pthread)
+target_link_libraries(${OSDP_UNIT_TEST} ${LIB_OSDP_TEST} osdp utils pthread)
+
+if (CONFIG_BUILD_SANITIZER)
+	target_compile_options(${OSDP_UNIT_TEST} PRIVATE
+		-fsanitize=address,undefined,leak
+	)
+	target_link_options(${OSDP_UNIT_TEST} PRIVATE
+		-fsanitize=address,undefined,leak
+	)
+endif()
 
 include_directories(
 	${PROJECT_SOURCE_DIR}/include

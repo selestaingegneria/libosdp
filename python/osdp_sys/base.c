@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+ * Copyright (c) 2020-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -47,7 +47,7 @@ int pyosdp_fops_read(void *arg, void *buf, int size, int offset)
 
 	bytes = PyObject_CallObject(self->fops.read_cb, arglist);
 
-	rc = pyosdp_parse_bytes(bytes, (uint8_t **)&rec_bytes, &len);
+	rc = pyosdp_parse_bytes(bytes, (uint8_t **)&rec_bytes, &len, false);
 	if (rc == 0) {
 		if (len <= size)
 			memcpy(buf, rec_bytes, len);
@@ -196,30 +196,6 @@ static PyObject *pyosdp_file_register_ops(pyosdp_base_t *self, PyObject *args)
 	Py_RETURN_TRUE;
 }
 
-#define pyosdp_set_loglevel_doc                                                \
-	"Set OSDP logging level\n"                                             \
-	"\n"                                                                   \
-	"@param log_level OSDP log level (0 to 7)\n"                           \
-	"\n"                                                                   \
-	"@return None"
-static PyObject *pyosdp_set_loglevel(pyosdp_base_t *self, PyObject *args)
-{
-	int log_level;
-
-	if (!PyArg_ParseTuple(args, "I", &log_level))
-		return NULL;
-
-	if (log_level < OSDP_LOG_EMERG ||
-	    log_level > OSDP_LOG_MAX_LEVEL) {
-		PyErr_SetString(PyExc_KeyError, "invalid log level");
-		return NULL;
-	}
-
-	osdp_logger_init("pyosdp", log_level, NULL);
-
-	Py_RETURN_NONE;
-}
-
 PyObject *pyosdp_get_version(pyosdp_base_t *self, PyObject *args)
 {
 	const char *version;
@@ -248,7 +224,6 @@ PyObject *pyosdp_get_source_info(pyosdp_base_t *self, PyObject *args)
 
 static void pyosdp_base_tp_dealloc(pyosdp_base_t *self)
 {
-	channel_manager_teardown(&self->channel_manager);
 	Py_XDECREF(self->fops.open_cb);
 	Py_XDECREF(self->fops.read_cb);
 	Py_XDECREF(self->fops.write_cb);
@@ -261,11 +236,6 @@ static int pyosdp_base_tp_init(pyosdp_base_t *self, PyObject *args, PyObject *kw
 	self->fops.read_cb = NULL;
 	self->fops.write_cb = NULL;
 	self->fops.close_cb = NULL;
-
-	channel_manager_init(&self->channel_manager);
-
-	osdp_logger_init("pyosdp", OSDP_LOG_INFO, NULL);
-
 	return 0;
 }
 
@@ -274,8 +244,6 @@ static PyMethodDef pyosdp_base_methods[] = {
 	  "Get OSDP version as string" },
 	{ "get_source_info", (PyCFunction)pyosdp_get_source_info, METH_NOARGS,
 	  "Get LibOSDP source info string" },
-	{ "set_loglevel", (PyCFunction)pyosdp_set_loglevel, METH_VARARGS,
-	  pyosdp_set_loglevel_doc },
 	{ "register_file_ops", (PyCFunction)pyosdp_file_register_ops, METH_VARARGS,
 	  pyosdp_file_register_ops_doc },
 	{ "get_file_tx_status", (PyCFunction)pyosdp_get_file_tx_status, METH_VARARGS,

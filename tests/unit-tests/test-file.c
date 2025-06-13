@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+ * Copyright (c) 2021-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -160,6 +160,23 @@ err:
 	return false;
 }
 
+static int event_callback(void *arg, int pd, struct osdp_event *ev)
+{
+	ARG_UNUSED(arg);
+	ARG_UNUSED(pd);
+	ARG_UNUSED(ev);
+	printf(SUB_1 "got event callback\n");
+	return 0;
+}
+
+static int cmd_callback(void *arg, struct osdp_cmd *cmd)
+{
+	ARG_UNUSED(arg);
+	ARG_UNUSED(cmd);
+	printf(SUB_1 "got cmd callback\n");
+	return 0;
+}
+
 void run_file_tx_tests(struct test *t, bool line_noise)
 {
 	bool result = false;
@@ -197,6 +214,9 @@ void run_file_tx_tests(struct test *t, bool line_noise)
 	if (test_create_file())
 		goto error;
 
+	osdp_cp_set_event_callback(cp_ctx, event_callback, NULL);
+	osdp_pd_set_command_callback(pd_ctx, cmd_callback, NULL);
+
 	osdp_file_register_ops(cp_ctx, 0, &sender_ops);
 	osdp_file_register_ops(pd_ctx, 0, &receiver_ops);
 
@@ -232,7 +252,7 @@ void run_file_tx_tests(struct test *t, bool line_noise)
 			.flags = 0,
 		}
 	};
-	if (osdp_cp_send_command(cp_ctx, 0, &cmd)) {
+	if (osdp_cp_submit_command(cp_ctx, 0, &cmd)) {
 		printf(SUB_1 "Failed to initiate file tx command\n");
 		goto error;
 	}
@@ -252,7 +272,7 @@ void run_file_tx_tests(struct test *t, bool line_noise)
 		}
 		if (offset == size)
 			break;
-	};
+	}
 
 	result = test_check_rec_file();
 	printf(SUB_1 "file transfer test %s\n",

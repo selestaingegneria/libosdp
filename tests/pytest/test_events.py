@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2021-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+#  Copyright (c) 2021-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
 #
 #  SPDX-License-Identifier: Apache-2.0
 #
@@ -7,6 +7,7 @@
 import pytest
 
 from osdp import *
+from conftest import make_fifo_pair, cleanup_fifo_pair
 
 pd_cap = PDCapabilities([
     (Capability.OutputControl, 1, 8),
@@ -16,17 +17,24 @@ pd_cap = PDCapabilities([
     (Capability.TextOutput, 1, 1),
 ])
 
-pd_info_list = [
-    PDInfo(101, scbk=KeyStore.gen_key(), flags=[ LibFlag.EnforceSecure ], name='chn-0'),
-]
+key = KeyStore.gen_key()
+f1, f2 = make_fifo_pair("events")
 
-secure_pd = PeripheralDevice(pd_info_list[0], pd_cap, log_level=LogLevel.Debug)
+secure_pd = PeripheralDevice(
+    PDInfo(101, f1, scbk=key, flags=[ LibFlag.EnforceSecure ]),
+    pd_cap,
+    log_level=LogLevel.Debug
+)
 
 pd_list = [
     secure_pd,
 ]
 
-cp = ControlPanel(pd_info_list, log_level=LogLevel.Debug)
+cp = ControlPanel([
+        PDInfo(101, f2, scbk=key, flags=[ LibFlag.EnforceSecure, LibFlag.EnableNotification ])
+    ],
+    log_level=LogLevel.Debug
+)
 
 @pytest.fixture(scope='module', autouse=True)
 def setup_test():
@@ -41,6 +49,14 @@ def teardown_test():
     cp.teardown()
     for pd in pd_list:
         pd.teardown()
+    cleanup_fifo_pair("events")
+
+def check_event(event):
+    while True:
+        e = cp.get_event(secure_pd.address)
+        if e['event'] != Event.Notification:
+            break
+    assert e == event
 
 def test_event_keypad():
     event = {
@@ -48,8 +64,8 @@ def test_event_keypad():
         'reader_no': 1,
         'data': bytes([9,1,9,2,6,3,1,7,7,0]),
     }
-    secure_pd.notify_event(event)
-    assert cp.get_event(secure_pd.address) == event
+    secure_pd.submit_event(event)
+    check_event(event)
 
 def test_event_mfg_reply():
     event = {
@@ -58,19 +74,8 @@ def test_event_mfg_reply():
         'mfg_command': 0x10,
         'data': bytes([9,1,9,2,6,3,1,7,7,0]),
     }
-    secure_pd.notify_event(event)
-    assert cp.get_event(secure_pd.address) == event
-
-def test_event_cardread_ascii():
-    event = {
-        'event': Event.CardRead,
-        'reader_no': 1,
-        'direction': 1,
-        'format': CardFormat.ASCII,
-        'data': bytes([9,1,9,2,6,3,1,7,7,0]),
-    }
-    secure_pd.notify_event(event)
-    assert cp.get_event(secure_pd.address) == event
+    secure_pd.submit_event(event)
+    check_event(event)
 
 def test_event_cardread_wiegand():
     event = {
@@ -81,32 +86,23 @@ def test_event_cardread_wiegand():
         'format': CardFormat.Wiegand,
         'data': bytes([0x55, 0xAA]),
     }
-    secure_pd.notify_event(event)
-    assert cp.get_event(secure_pd.address) == event
+    secure_pd.submit_event(event)
+    check_event(event)
 
 def test_event_input():
     event = {
-        'event': Event.InputOutput,
-        'type': 0, # 0 - input; 1 - output
-        'status': 0xAA, # bit mask of input/output status (upto 32)
+        'event': Event.Status,
+        'type': StatusReportType.Input,
+        'report': bytes([1, 0, 1, 0, 1, 0, 1, 0])
     }
-    secure_pd.notify_event(event)
-    assert cp.get_event(secure_pd.address) == event
+    secure_pd.submit_event(event)
+    check_event(event)
 
 def test_event_output():
     event = {
-        'event': Event.InputOutput,
-        'type': 1, # 0 - input; 1 - output
-        'status': 0x55, # bit mask of input/output status (upto 32)
-    }
-    secure_pd.notify_event(event)
-    assert cp.get_event(secure_pd.address) == event
-
-def test_event_status():
-    event = {
         'event': Event.Status,
-        'power': 0, # 0 - normal; 1 - power failure
-        'tamper': 1, # 0 - normal; 1 - tamper
+        'type': StatusReportType.Output,
+        'report': bytes([0, 1, 0, 1, 0, 1, 0, 1])
     }
-    secure_pd.notify_event(event)
-    assert cp.get_event(secure_pd.address) == event
+    secure_pd.submit_event(event)
+    check_event(event)

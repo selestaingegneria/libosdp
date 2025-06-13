@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2019-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+#  Copyright (c) 2019-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
 #
 #  SPDX-License-Identifier: Apache-2.0
 #
@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
 cmake_policy(SET CMP0063 NEW)
 
-project(libosdp VERSION 2.4.0)
+project(libosdp VERSION 3.0.8)
 
 set(PROJECT_AUTHOR       "Siddharth Chandrasekaran")
 set(PROJECT_AUTHOR_EMAIL "sidcha.dev@gmail.com")
@@ -18,6 +18,8 @@ set(PROJECT_HOMEPAGE     "https://libosdp.sidcha.dev/")
 set(PROJECT_DESCRIPTION  "Open Supervised Device Protocol (OSDP) Library")
 set(PROJECT_LICENSE      "Apache License, Version 2.0 (Apache-2.0)")
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 ## Includes
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(AddCCompilerFlag)
@@ -26,7 +28,9 @@ include(BuildType)
 include(GNUInstallDirs)
 
 ## Global settings
-add_compile_options(-Wall -Wextra)
+if(NOT MSVC)
+	add_compile_options(-Wall -Wextra)
+endif()
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -38,12 +42,12 @@ option(CONFIG_OSDP_LIB_ONLY "Only build the library" OFF)
 
 # Each subdirectory has it's own CMakeLists.txt
 include(GitSubmodules)
-add_subdirectory(utils)
 add_subdirectory(src)
-if (NOT CONFIG_OSDP_STATIC_PD AND NOT CONFIG_OSDP_LIB_ONLY)
+if (NOT CONFIG_OSDP_STATIC_PD AND NOT CONFIG_OSDP_LIB_ONLY AND NOT MSVC)
+	add_subdirectory(utils)
 	add_subdirectory(tests/unit-tests)
-	add_subdirectory(samples/c)
-	add_subdirectory(samples/cpp)
+	add_subdirectory(examples/c)
+	add_subdirectory(examples/cpp)
 	add_subdirectory(doc)
 endif()
 

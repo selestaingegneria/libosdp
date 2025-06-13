@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+ * Copyright (c) 2020-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -44,9 +44,13 @@ static int pyosdp_make_struct_cmd_output(struct osdp_cmd *p, PyObject *dict)
 static int pyosdp_make_dict_cmd_led(PyObject *obj, struct osdp_cmd *cmd)
 {
 	bool is_temporary = false;
+	bool cancel_temporary = false;
 	struct osdp_cmd_led_params *p = &cmd->led.permanent;
 
-	if (cmd->led.temporary.control_code != 0) {
+	if (cmd->led.temporary.control_code == 1 &&
+	    cmd->led.permanent.control_code != 0) {
+		cancel_temporary = true;
+	} else if (cmd->led.temporary.control_code) {
 		p = &cmd->led.temporary;
 		is_temporary = true;
 	}
@@ -66,8 +70,14 @@ static int pyosdp_make_dict_cmd_led(PyObject *obj, struct osdp_cmd *cmd)
 		return -1;
 	if (pyosdp_dict_add_int(obj, "off_count", p->off_count))
 		return -1;
-	if (is_temporary && pyosdp_dict_add_int(obj, "timer_count", p->timer_count))
-		return -1;
+	if (is_temporary) {
+		if (pyosdp_dict_add_int(obj, "timer_count", p->timer_count))
+			return -1;
+	}
+	if (cancel_temporary) {
+		if (pyosdp_dict_add_bool(obj, "cancel_temporary", cancel_temporary))
+			return -1;
+	}
 	return 0;
 }
 
@@ -226,7 +236,7 @@ static int pyosdp_make_struct_cmd_text(struct osdp_cmd *p, PyObject *dict)
 	memcpy(cmd->data, data, length);
 	ret = 0;
 exit:
-	safe_free(data);
+	free(data);
 	return ret;
 }
 
@@ -346,10 +356,35 @@ static int pyosdp_make_struct_cmd_file_tx(struct osdp_cmd *p, PyObject *dict)
 	return 0;
 }
 
-/* Dummies for commands that don't have any body */
-static int pyosdp_make_struct_cmd_dummy(struct osdp_cmd *cmd, PyObject *obj) { return 0; }
-static int pyosdp_make_dict_cmd_dummy(PyObject *obj, struct osdp_cmd *cmd) { return 0; }
+static int pyosdp_make_dict_cmd_status(PyObject *obj, struct osdp_cmd *cmd)
+{
+	if (pyosdp_dict_add_int(obj, "type", cmd->status.type))
+		return -1;
+	if (pyosdp_dict_add_bytes(obj, "report", cmd->status.report, cmd->status.nr_entries))
+		return -1;
+	return 0;
+}
 
+static int pyosdp_make_struct_cmd_status(struct osdp_cmd *p, PyObject *dict)
+{
+	int type, nr_entries;
+	uint8_t *report;
+	struct osdp_status_report *cmd = &p->status;
+
+	if (pyosdp_dict_get_int(dict, "type", &type))
+		return -1;
+
+	if (pyosdp_dict_get_bytes_allow_empty(dict, "report", &report, &nr_entries))
+		return -1;
+
+	if (nr_entries > OSDP_STATUS_REPORT_MAX_LEN)
+		return -1;
+
+	cmd->type = type;
+	cmd->nr_entries = nr_entries;
+	memcpy(cmd->report, report, nr_entries);
+	return 0;
+}
 
 /* ------------------------------- */
 /*             EVENTS              */
@@ -386,8 +421,6 @@ static int pyosdp_make_struct_event_cardread(struct osdp_event *p,
 	struct osdp_event_cardread *ev = &p->cardread;
 	uint8_t *data_bytes;
 
-	p->type = OSDP_EVENT_CARDREAD;
-
 	if (pyosdp_dict_get_int(dict, "reader_no", &reader_no))
 		return -1;
 
@@ -409,7 +442,7 @@ static int pyosdp_make_struct_event_cardread(struct osdp_event *p,
 		len_bytes = data_length;
 	}
 
-	if (len_bytes > OSDP_EVENT_MAX_DATALEN) {
+	if (len_bytes > OSDP_EVENT_CARDREAD_MAX_DATALEN) {
 		PyErr_Format(PyExc_ValueError, "Data bytes too long");
 		return -1;
 	}
@@ -439,8 +472,6 @@ static int pyosdp_make_struct_event_keypress(struct osdp_event *p, PyObject *dic
 	int i, data_length, reader_no;
 	struct osdp_event_keypress *ev = &p->keypress;
 	uint8_t *data_bytes;
-
-	p->type = OSDP_EVENT_KEYPRESS;
 
 	if (pyosdp_dict_get_int(dict, "reader_no", &reader_no))
 		return -1;
@@ -473,8 +504,6 @@ static int pyosdp_make_struct_event_mfg_reply(struct osdp_event *p,
 	struct osdp_event_mfgrep *ev = &p->mfgrep;
 	uint8_t *data_bytes;
 
-	p->type = OSDP_EVENT_MFGREP;
-
 	if (pyosdp_dict_get_int(dict, "vendor_code", &vendor_code))
 		return -1;
 
@@ -492,58 +521,64 @@ static int pyosdp_make_struct_event_mfg_reply(struct osdp_event *p,
 	return 0;
 }
 
-static int pyosdp_make_dict_event_io(PyObject *obj, struct osdp_event *event)
-{
-	if (pyosdp_dict_add_int(obj, "type", event->io.type))
-		return -1;
-	if (pyosdp_dict_add_int(obj, "status", event->io.status))
-		return -1;
-	return 0;
-}
-
-static int pyosdp_make_struct_event_io(struct osdp_event *p,
-				       PyObject *dict)
-{
-	int type, status;
-	struct osdp_event_io *ev = &p->io;
-
-	p->type = OSDP_EVENT_IO;
-
-	if (pyosdp_dict_get_int(dict, "type", &type))
-		return -1;
-
-	if (pyosdp_dict_get_int(dict, "status", &status))
-		return -1;
-
-	ev->type = type;
-	ev->status = (uint32_t)status;
-	return 0;
-}
-
 static int pyosdp_make_dict_event_status(PyObject *obj, struct osdp_event *event)
 {
-	if (pyosdp_dict_add_int(obj, "tamper", event->status.tamper))
+	if (pyosdp_dict_add_int(obj, "type", event->status.type))
 		return -1;
-	if (pyosdp_dict_add_int(obj, "power", event->status.power))
+	if (pyosdp_dict_add_bytes(obj, "report", event->status.report, event->status.nr_entries))
 		return -1;
 	return 0;
 }
 
 static int pyosdp_make_struct_event_status(struct osdp_event *p, PyObject *dict)
 {
-	int tamper, power;
-	struct osdp_event_status *ev = &p->status;
+	int type, nr_entries;
+	uint8_t *report;
+	struct osdp_status_report *ev = &p->status;
 
-	p->type = OSDP_EVENT_STATUS;
-
-	if (pyosdp_dict_get_int(dict, "tamper", &tamper))
+	if (pyosdp_dict_get_int(dict, "type", &type))
 		return -1;
 
-	if (pyosdp_dict_get_int(dict, "power", &power))
+	if (pyosdp_dict_get_bytes(dict, "report", &report, &nr_entries))
 		return -1;
 
-	ev->tamper = (uint8_t)tamper;
-	ev->power = (uint8_t)power;
+	if (nr_entries > OSDP_STATUS_REPORT_MAX_LEN)
+		return -1;
+
+	ev->type = type;
+	ev->nr_entries = nr_entries;
+	memcpy(ev->report, report, nr_entries);
+	return 0;
+}
+
+static int pyosdp_make_dict_event_notif(PyObject *obj, struct osdp_event *event)
+{
+	if (pyosdp_dict_add_int(obj, "type", event->notif.type))
+		return -1;
+	if (pyosdp_dict_add_int(obj, "arg0", event->notif.arg0))
+		return -1;
+	if (pyosdp_dict_add_int(obj, "arg1", event->notif.arg1))
+		return -1;
+	return 0;
+}
+
+static int pyosdp_make_struct_event_notif(struct osdp_event *p, PyObject *dict)
+{
+	int type, arg0, arg1;
+	struct osdp_event_notification *ev = &p->notif;
+
+	if (pyosdp_dict_get_int(dict, "type", &type))
+		return -1;
+
+	if (pyosdp_dict_get_int(dict, "arg0", &arg0))
+		return -1;
+
+	if (pyosdp_dict_get_int(dict, "arg1", &arg1))
+		return -1;
+
+	ev->type = type;
+	ev->arg0 = arg0;
+	ev->arg1 = arg1;
 	return 0;
 }
 
@@ -575,6 +610,10 @@ static struct {
 		.dict_to_struct = pyosdp_make_struct_cmd_comset,
 		.struct_to_dict = pyosdp_make_dict_cmd_comset,
 	},
+	[OSDP_CMD_COMSET_DONE] = {
+		.dict_to_struct = pyosdp_make_struct_cmd_comset,
+		.struct_to_dict = pyosdp_make_dict_cmd_comset,
+	},
 	[OSDP_CMD_MFG] = {
 		.dict_to_struct = pyosdp_make_struct_cmd_mfg,
 		.struct_to_dict = pyosdp_make_dict_cmd_mfg,
@@ -584,8 +623,8 @@ static struct {
 		.struct_to_dict = pyosdp_make_dict_cmd_file_tx,
 	},
 	[OSDP_CMD_STATUS] = {
-		.dict_to_struct = pyosdp_make_struct_cmd_dummy,
-		.struct_to_dict = pyosdp_make_dict_cmd_dummy,
+		.dict_to_struct = pyosdp_make_struct_cmd_status,
+		.struct_to_dict = pyosdp_make_dict_cmd_status,
 	},
 };
 
@@ -605,13 +644,13 @@ static struct {
 		.struct_to_dict = pyosdp_make_dict_event_mfg_reply,
 		.dict_to_struct = pyosdp_make_struct_event_mfg_reply,
 	},
-	[OSDP_EVENT_IO] = {
-		.struct_to_dict = pyosdp_make_dict_event_io,
-		.dict_to_struct = pyosdp_make_struct_event_io,
-	},
 	[OSDP_EVENT_STATUS] = {
 		.struct_to_dict = pyosdp_make_dict_event_status,
 		.dict_to_struct = pyosdp_make_struct_event_status,
+	},
+	[OSDP_EVENT_NOTIFICATION] = {
+		.struct_to_dict = pyosdp_make_dict_event_notif,
+		.dict_to_struct = pyosdp_make_struct_event_notif,
 	},
 };
 
@@ -623,7 +662,7 @@ int pyosdp_make_struct_cmd(struct osdp_cmd *cmd, PyObject *dict)
 
 	if (pyosdp_dict_get_int(dict, "command", &cmd_id))
 		return -1;
-	if (cmd_id < OSDP_CMD_OUTPUT || cmd_id >= OSDP_CMD_SENTINEL)
+	if (cmd_id <= 0 || cmd_id >= OSDP_CMD_SENTINEL)
 		return -1;
 	if (command_translator[cmd_id].dict_to_struct(cmd, dict))
 		return -1;
@@ -636,7 +675,7 @@ int pyosdp_make_dict_cmd(PyObject **dict, struct osdp_cmd *cmd)
 {
 	PyObject *obj;
 
-	if (cmd->id < OSDP_CMD_OUTPUT || cmd->id >= OSDP_CMD_SENTINEL)
+	if (cmd->id <= 0 || cmd->id >= OSDP_CMD_SENTINEL)
 		return -1;
 
 	obj = PyDict_New();
@@ -660,6 +699,10 @@ int pyosdp_make_struct_event(struct osdp_event *event, PyObject *dict)
 	if (pyosdp_dict_get_int(dict, "event", &event_type))
 		return -1;
 
+	if (event_type <= 0 || event_type >= OSDP_EVENT_SENTINEL)
+		return -1;
+
+	event->type = event_type;
 	return event_translator[event_type].dict_to_struct(event, dict);
 }
 
@@ -684,3 +727,17 @@ int pyosdp_make_dict_event(PyObject **dict, struct osdp_event *event)
 	return 0;
 }
 
+PyObject *pyosdp_make_dict_pd_id(struct osdp_pd_id *pd_id)
+{
+	PyObject *obj = PyDict_New();
+	if (obj == NULL)
+		return NULL;
+
+	pyosdp_dict_add_int(obj, "version", pd_id->version);
+	pyosdp_dict_add_int(obj, "model", pd_id->model);
+	pyosdp_dict_add_int(obj, "vendor_code", pd_id->vendor_code);
+	pyosdp_dict_add_int(obj, "serial_number", pd_id->serial_number);
+	pyosdp_dict_add_int(obj, "firmware_version", pd_id->firmware_version);
+
+	return obj;
+}

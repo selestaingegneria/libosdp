@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2021-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+#  Copyright (c) 2021-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
 #
 #  SPDX-License-Identifier: Apache-2.0
 #
@@ -10,6 +10,9 @@ class LibFlag:
     EnforceSecure = osdp_sys.FLAG_ENFORCE_SECURE
     InstallMode = osdp_sys.FLAG_INSTALL_MODE
     IgnoreUnsolicited = osdp_sys.FLAG_IGN_UNSOLICITED
+    EnableNotification = osdp_sys.FLAG_ENABLE_NOTIFICATION
+    CapturePackets = osdp_sys.FLAG_CAPTURE_PACKETS
+    AllowEmptyEncryptedDataBlock = osdp_sys.FLAG_ALLOW_EMPTY_ENCRYPTED_DATA_BLOCK
 
 class LogLevel:
     Emergency = osdp_sys.LOG_EMERG
@@ -21,15 +24,23 @@ class LogLevel:
     Info = osdp_sys.LOG_INFO
     Debug = osdp_sys.LOG_DEBUG
 
+class StatusReportType:
+    Local = osdp_sys.STATUS_REPORT_LOCAL
+    Input = osdp_sys.STATUS_REPORT_INPUT
+    Output = osdp_sys.STATUS_REPORT_OUTPUT
+    Remote = osdp_sys.STATUS_REPORT_REMOTE
+
 class Command:
     Output = osdp_sys.CMD_OUTPUT
     Buzzer = osdp_sys.CMD_BUZZER
     LED = osdp_sys.CMD_LED
     Comset = osdp_sys.CMD_COMSET
+    ComsetDone = osdp_sys.CMD_COMSET_DONE
     Text = osdp_sys.CMD_TEXT
     Manufacturer = osdp_sys.CMD_MFG
     Keyset = osdp_sys.CMD_KEYSET
     FileTransfer = osdp_sys.CMD_FILE_TX
+    Status = osdp_sys.CMD_STATUS
 
 class CommandLEDColor:
     Black = osdp_sys.LED_COLOR_NONE
@@ -37,16 +48,24 @@ class CommandLEDColor:
     Green = osdp_sys.LED_COLOR_GREEN
     Amber = osdp_sys.LED_COLOR_AMBER
     Blue = osdp_sys.LED_COLOR_BLUE
+    Magenta = osdp_sys.LED_COLOR_MAGENTA
+    Cyan = osdp_sys.LED_COLOR_CYAN
+    White = osdp_sys.LED_COLOR_WHITE
 
 class CommandFileTxFlags:
     Cancel = osdp_sys.CMD_FILE_TX_FLAG_CANCEL
+
+class EventNotification:
+    Command = osdp_sys.EVENT_NOTIFICATION_COMMAND
+    SecureChannelStatus = osdp_sys.EVENT_NOTIFICATION_SC_STATUS
+    PeripheralDeviceStatus = osdp_sys.EVENT_NOTIFICATION_PD_STATUS
 
 class Event:
     CardRead = osdp_sys.EVENT_CARDREAD
     KeyPress = osdp_sys.EVENT_KEYPRESS
     ManufacturerReply = osdp_sys.EVENT_MFGREP
-    InputOutput = osdp_sys.EVENT_IO
     Status = osdp_sys.EVENT_STATUS
+    Notification = osdp_sys.EVENT_NOTIFICATION
 
 class CardFormat:
     Unspecified = osdp_sys.CARD_FMT_RAW_UNSPECIFIED

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2023 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+ * Copyright (c) 2019-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -28,17 +28,12 @@ void osdp_compute_scbk(struct osdp_pd *pd, uint8_t *master_key, uint8_t *scbk)
 void osdp_compute_session_keys(struct osdp_pd *pd)
 {
 	int i;
-	struct osdp *ctx = pd_to_osdp(pd);
 	uint8_t scbk[16];
 
 	if (ISSET_FLAG(pd, PD_FLAG_SC_USE_SCBKD)) {
 		memcpy(scbk, osdp_scbk_default, 16);
 	} else {
-		if (is_cp_mode(pd) && !ISSET_FLAG(pd, PD_FLAG_HAS_SCBK)) {
-			osdp_compute_scbk(pd, ctx->sc_master_key, scbk);
-		} else {
-			memcpy(scbk, pd->sc.scbk, 16);
-		}
+		memcpy(scbk, pd->sc.scbk, 16);
 	}
 
 	memset(pd->sc.s_enc, 0, 16);
@@ -142,6 +137,10 @@ int osdp_decrypt_data(struct osdp_pd *pd, int is_cmd, uint8_t *data, int length)
 
 	if (length % 16 != 0) {
 		return -1;
+	}
+
+	if (sc_allow_empty_encrypted_data_block(pd) && length == 0) {
+		return 0;
 	}
 
 	memcpy(iv, is_cmd ? pd->sc.r_mac : pd->sc.c_mac, 16);
