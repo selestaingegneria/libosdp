@@ -891,8 +891,8 @@ static int cp_phy_state_update(struct osdp_pd *pd)
 				pd->phy_state = OSDP_CP_PHY_STATE_WAIT;
 				pd->phy_retry_count += 1;
 				pd->phy_tstamp = osdp_millis_now();
-				LOG_WRN("No response in 200ms; probing (%d)",
-					pd->phy_retry_count);
+                LOG_WRN("No response in %dms; probing (%d)",
+                        OSDP_RESP_TOUT_MS, pd->phy_retry_count);
 				return OSDP_CP_ERR_CAN_YIELD;
 			}
 			LOG_ERR("Response timeout for CMD: %s(%02x)",
@@ -1605,6 +1605,67 @@ void osdp_cp_refresh(osdp_t *ctx)
 		SET_CURRENT_PD(ctx, next_pd_idx);
 		refresh_count++;
 	}
+}
+
+void osdp_cp_refresh_ex(osdp_t *ctx)
+{
+    input_check(ctx);
+
+    struct osdp_pd *pd;
+    bool is_one_pd_online = false;
+    uint8_t mask[(OSDP_PD_MAX + 7) / 8] = {0};
+
+    osdp_get_status_mask(ctx, mask);
+
+    // Verifica se almeno un PD è online
+    for (unsigned int i = 0; i < sizeof(mask); i++) {
+        if (mask[i] != 0) {
+            is_one_pd_online = true;
+            break;
+        }
+    }
+
+    static int last_offline_idx = 0;
+
+    int next_pd_idx, refresh_count = 0;
+    while(refresh_count < NUM_PD(ctx)) {
+        pd = GET_CURRENT_PD(ctx);
+        if (is_pd_online(mask, pd->idx) || !is_one_pd_online) {
+            if (cp_refresh(pd) < 0)
+                return;
+
+            if(!is_one_pd_online){
+                last_offline_idx = 0;
+            }
+        }
+
+        next_pd_idx = pd->idx + 1;
+        if (next_pd_idx >= NUM_PD(ctx)) {
+            next_pd_idx = 0;
+        }
+        SET_CURRENT_PD(ctx, next_pd_idx);
+        refresh_count++;
+    }
+
+    // Se almeno un PD è online, interroga UNA testa offline a rotazione
+    if (is_one_pd_online) {
+        int attempts = 0;
+        while (attempts < NUM_PD(ctx)) {
+            int idx = (last_offline_idx + attempts) % NUM_PD(ctx);
+            SET_CURRENT_PD(ctx, idx);
+            pd = GET_CURRENT_PD(ctx);
+
+            if (!is_pd_online(mask, pd->idx)) {
+                if (cp_refresh(pd) >= 0) {
+                    last_offline_idx = (idx + 1) % NUM_PD(ctx);
+                    break; // solo UNA offline per giro
+                }
+                // Salva l'indice per la prossima volta (rotazione offline)
+            }
+            else
+                attempts++;
+        }
+    }
 }
 
 void osdp_cp_set_event_callback(osdp_t *ctx, cp_event_callback_t cb, void *arg)
