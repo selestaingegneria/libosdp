@@ -1612,6 +1612,7 @@ void osdp_cp_refresh_ex(osdp_t *ctx)
 {
     input_check(ctx);
 
+    unsigned int i = 0;
     struct osdp_pd *pd;
     bool is_one_pd_online = false;
     uint8_t mask[(OSDP_PD_MAX + 7) / 8] = {0};
@@ -1619,7 +1620,7 @@ void osdp_cp_refresh_ex(osdp_t *ctx)
     osdp_get_status_mask(ctx, mask);
 
     // Verifica se almeno un PD è online
-    for (unsigned int i = 0; i < sizeof(mask); i++) {
+    for (i = 0; i < sizeof(mask); i++) {
         if (mask[i] != 0) {
             is_one_pd_online = true;
             break;
