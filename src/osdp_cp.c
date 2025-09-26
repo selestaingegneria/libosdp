@@ -1652,13 +1652,19 @@ void osdp_cp_refresh_ex(osdp_t *ctx)
     if (is_one_pd_online) {
         int attempts = 0;
         while (attempts < NUM_PD(ctx)) {
-            int idx = (last_offline_idx + attempts) % NUM_PD(ctx);
+            int idx = last_offline_idx + attempts;
+            if (idx >= NUM_PD(ctx)) {
+                idx = 0;
+            }
             SET_CURRENT_PD(ctx, idx);
             pd = GET_CURRENT_PD(ctx);
 
             if (!is_pd_online(mask, pd->idx)) {
                 if (cp_refresh(pd) >= 0) {
-                    last_offline_idx = (idx + 1) % NUM_PD(ctx);
+                    last_offline_idx = pd->idx + 1;
+                    if (last_offline_idx >= NUM_PD(ctx)) {
+                        last_offline_idx = 0;
+                    }
                     break; // solo UNA offline per giro
                 }
                 // Salva l'indice per la prossima volta (rotazione offline)
